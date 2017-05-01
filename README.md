@@ -1,6 +1,13 @@
 SVG Template Mail Merge to PDF
 ==============================
 
+BH - changes
+-----
+In this branch, I've made modifications which let me map a CSV file from my google forms
+results into the PDF. It has to map some strings to shorten them too.
+
+It also adds support for `flowPara`.
+
 Features
 --------
 

@@ -16,6 +16,24 @@ NSMAP = {
 }
 
 
+starter_map = {
+    "Asparagus, crispy duck egg, Somerset chorizo, rocket, extra virgin olive oil": "Asparagus, duck egg",
+    "Shallot tart tatin, rocket, lemon thyme (V)": "Shallot tart tatin",
+    "Griddled asparagus, lemon oil & rocket (Ve)": "Griddled asparagus",
+}
+
+main_map = {
+    "Fillet of Somerset beef, Dauphinoise potatoes, horseradish ice cream, red wine jus": "Fillet of Somerset beef",
+    "Summer vegetable & harissa tagine with halloumi & preserved lemon, jasmine rice (V)": "Tagine with halloumi",
+    "Summer vegetable & harissa tagine with preserved lemon, jasmine rice (Ve)": "Tagine (Ve)",
+}
+
+dessert_map = {
+    "Chocolate and star anise sunken souffle, hazelnut ice cream (V)": "Chocolate souffle",
+    "Lemon meringue pie with blueberry compote, caramelized lemon (V)": "Lemon meringue pie",
+    "Fresh fruit salad (Ve)": "Fruit salad"
+}
+
 def replace(root, replacements):
     '''Apply replacements to an SVG ElementTree
 
@@ -35,9 +53,10 @@ def replace(root, replacements):
             return count, False
         count += 1
         for k, v in data_row.items():
-            for e in template.findall(".//svg:tspan[@class='%s']" % k,
-                                      namespaces=NSMAP):
-                e.text = v
+            for elem_type in ["tspan", "flowPara"]:
+                for e in template.findall(".//svg:{1}[@class='{0}']"
+                                .format(k, elem_type), namespaces=NSMAP):
+                    e.text = v
     return count, True
 
 
@@ -70,6 +89,7 @@ def concatenate_pdfs(input_pdf_paths, output_pdf_path):
         'gs',
         '-dBATCH',
         '-dNOPAUSE',
+        '-dAutoRotatePages=/None',
         '-q',
         '-sDEVICE=pdfwrite',
         '-sOutputFile=%s' % output_pdf_path
@@ -83,16 +103,34 @@ def generate_pdf(data_iterator, svg_template_path, pdf_output_path, overwrite):
         pdfs = []
         for tree in generate_page_svg_trees(data_iterator, svg_template_path):
             pdfs.append(svg_tree_to_pdf(tree, tempdir))
+
         if not overwrite:
             open(pdf_output_path, 'x').close()
         concatenate_pdfs(pdfs, pdf_output_path)
 
 
+def filter_wedding_rsvp(reader):
+    """Takes a dict reader and returns the class dict of values"""
+    for row in reader:
+        if not row['Starter']:
+            print("Skipping guest {}".format(row['Name of Guest 1']))
+            continue
+        else:
+            print("Preparing guest {}".format(row['Name of Guest']))
+            # Map the CSV columns on to our class names
+            yield {
+                'name': row['Name of Guest'],
+                'starter': starter_map[row['Starter']],
+                'main': main_map[row['Main course']],
+                'dessert': dessert_map[row['Dessert']],
+            }
+
 def process_csv(csv_data_path, svg_template_path, pdf_output_path, overwrite):
     with open(csv_data_path, 'r') as csv_fobj:
         reader = csv.DictReader(csv_fobj)
+        filered_reader = filter_wedding_rsvp(iter(reader))
         generate_pdf(
-            data_iterator=iter(reader),
+            data_iterator=filered_reader,
             svg_template_path=svg_template_path,
             pdf_output_path=pdf_output_path,
             overwrite=overwrite,
@@ -109,15 +147,16 @@ def main():
     args = parser.parse_args()
     if not args.force and os.path.exists(args.output_pdf_file):
         if os.isatty(sys.stdin.fileno()):
-            answer = input(
-                "File %s already exists. Overwrite? [y/N] " %
-                args.output_pdf_file,
-            )
-            if answer.lower() in ['y', 'yes']:
-                args.force = True
-            else:
-                print("Aborted")
-                sys.exit(1)
+            # BH - For now, always overwrite
+            #answer = input(
+            #    "File %s already exists. Overwrite? [y/N] " %
+            #    args.output_pdf_file,
+            #)
+            #if answer.lower() in ['y', 'yes']:
+            args.force = True
+            #else:
+            #    print("Aborted")
+            #    sys.exit(1)
         else:
             print(
                 "Error: file %s already exists. Use --force to overwrite.\n"
